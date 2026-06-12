@@ -8,9 +8,37 @@ import (
 
 const Docstring = "Node patterns are a comma-separated list of individual patterns.\nEach pattern can either be a full node name or a node range like node[01-03,05]."
 
+// GroupPrefix marks a token passed to Expand as a node-group reference rather
+// than a literal host name or bracketed range, e.g. "@rack1".
+const GroupPrefix = "@"
+
+// GroupResolver expands a single group name (without the leading "@") into the
+// list of node names it contains. The node package registers an implementation
+// at startup via SetGroupResolver; until then, Expand passes "@"-prefixed
+// tokens through unchanged.
+type GroupResolver interface {
+	GroupMembers(name string) []string
+}
+
+var groupResolver GroupResolver
+
+// SetGroupResolver installs the resolver consulted by Expand for "@group"
+// tokens. Passing nil clears it. Typically called from node.New once the node
+// configuration has been loaded so subsequent hostlist.Expand calls can
+// resolve group references transparently.
+func SetGroupResolver(r GroupResolver) {
+	groupResolver = r
+}
+
 // Expand takes a slice of host strings, possibly containing comma-separated
-// values and bracketed ranges (e.g. "node[01-03]") and returns a fully expanded
-// slice of host names.
+// values and bracketed ranges (e.g. "node[01-03]"), and returns a fully
+// expanded slice of host names.
+//
+// Tokens prefixed with "@" are treated as node-group references and resolved
+// via the resolver registered with SetGroupResolver; the union of all
+// resolved members is returned, deduplicated against any plain host names in
+// the same call. If no resolver is registered, "@" tokens pass through
+// unchanged.
 func Expand(list []string) []string {
 	// First, split each input string on commas that occur outside brackets.
 	var preList []string
@@ -28,7 +56,40 @@ func Expand(list []string) []string {
 		expanded = onceExpanded
 	}
 
-	return expanded
+	return resolveGroups(expanded)
+}
+
+// resolveGroups walks bracket-expanded tokens, substituting "@group" entries
+// with the membership reported by the registered resolver. Plain tokens pass
+// through in order; groups append their members at the position the "@"
+// token appeared. Duplicates are removed.
+func resolveGroups(tokens []string) []string {
+	if groupResolver == nil {
+		return tokens
+	}
+	seen := make(map[string]struct{}, len(tokens))
+	result := make([]string, 0, len(tokens))
+	add := func(s string) {
+		if _, ok := seen[s]; ok {
+			return
+		}
+		seen[s] = struct{}{}
+		result = append(result, s)
+	}
+	for _, tok := range tokens {
+		if !strings.HasPrefix(tok, GroupPrefix) {
+			add(tok)
+			continue
+		}
+		name := strings.TrimPrefix(tok, GroupPrefix)
+		if name == "" {
+			continue
+		}
+		for _, id := range groupResolver.GroupMembers(name) {
+			add(id)
+		}
+	}
+	return result
 }
 
 // expandOnce performs a single round of bracket expansion.

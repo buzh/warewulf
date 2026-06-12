@@ -6,6 +6,7 @@ import (
 	"syscall"
 
 	warewulfconf "github.com/warewulf/warewulf/internal/pkg/config"
+	"github.com/warewulf/warewulf/internal/pkg/hostlist"
 	"github.com/warewulf/warewulf/internal/pkg/wwlog"
 
 	"gopkg.in/yaml.v3"
@@ -25,7 +26,15 @@ func New() (NodesYaml, error) {
 	if err != nil {
 		return NodesYaml{}, err
 	}
-	return Parse(data)
+	nodeList, err := Parse(data)
+	if err != nil {
+		return nodeList, err
+	}
+	// Register so subsequent hostlist.Expand calls resolve "@group" tokens
+	// against this configuration. The shared maps inside nodeList mean later
+	// in-process mutations remain visible to the resolver.
+	hostlist.SetGroupResolver(&nodeList)
+	return nodeList, nil
 }
 
 // Parse constructs a new nodeDb object from an input YAML
