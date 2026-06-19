@@ -12,6 +12,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
   profile set` flags. Prefixing a value with `+` adds it to the existing
   list; prefixing with `~` removes it. Bare values continue to replace the
   list, preserving today's behavior.
+- `wwctl node set` and `wwctl profile set` now display a per-field
+  before/after diff of the changes they are about to apply before prompting
+  for confirmation. Nodes (or profiles) receiving identical changes are
+  grouped onto a single header. Suppressed by `-y`/`--yes`.
 
 ### Changed
 
