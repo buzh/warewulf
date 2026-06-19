@@ -6,6 +6,13 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## Unreleased
 
+### Added
+
+- Additive/subtractive syntax for list-valued `wwctl node set` and `wwctl
+  profile set` flags. Prefixing a value with `+` adds it to the existing
+  list; prefixing with `~` removes it. Bare values continue to replace the
+  list, preserving today's behavior.
+
 ### Changed
 
 - Remove `dsa` from default `ssh: key types`; sshd silently skips DSA host keys
