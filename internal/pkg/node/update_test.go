@@ -70,6 +70,54 @@ func TestUpdateFrom_SliceField(t *testing.T) {
 	assert.Equal(t, []string{"compute", "gpu"}, dst.Profiles)
 }
 
+func TestUpdateFrom_SliceFieldMergeAdd(t *testing.T) {
+	dst := NewNode("test")
+	dst.SystemOverlay = []string{"wwinit", "wwclient"}
+
+	src := NewNode("")
+	src.SystemOverlay = []string{"+foo"}
+
+	dst.UpdateFrom(&src, changedSet("system-overlays"))
+
+	assert.Equal(t, []string{"wwinit", "wwclient", "foo"}, dst.SystemOverlay)
+}
+
+func TestUpdateFrom_SliceFieldMergeRemove(t *testing.T) {
+	dst := NewNode("test")
+	dst.SystemOverlay = []string{"wwinit", "wwclient", "foo"}
+
+	src := NewNode("")
+	src.SystemOverlay = []string{"~wwclient"}
+
+	dst.UpdateFrom(&src, changedSet("system-overlays"))
+
+	assert.Equal(t, []string{"wwinit", "foo"}, dst.SystemOverlay)
+}
+
+func TestUpdateFrom_SliceFieldMergeMixed(t *testing.T) {
+	dst := NewNode("test")
+	dst.SystemOverlay = []string{"wwinit", "wwclient"}
+
+	src := NewNode("")
+	src.SystemOverlay = []string{"+foo", "~wwclient", "bar"}
+
+	dst.UpdateFrom(&src, changedSet("system-overlays"))
+
+	assert.Equal(t, []string{"wwinit", "foo", "bar"}, dst.SystemOverlay)
+}
+
+func TestUpdateFrom_SliceFieldMergeIdempotent(t *testing.T) {
+	dst := NewNode("test")
+	dst.SystemOverlay = []string{"wwinit", "wwclient"}
+
+	src := NewNode("")
+	src.SystemOverlay = []string{"+wwinit", "~missing"}
+
+	dst.UpdateFrom(&src, changedSet("system-overlays"))
+
+	assert.Equal(t, []string{"wwinit", "wwclient"}, dst.SystemOverlay, "adding existing or removing absent should be no-op")
+}
+
 func TestUpdateFrom_SliceFieldUnchanged(t *testing.T) {
 	dst := NewNode("test")
 	dst.Profiles = []string{"default"}

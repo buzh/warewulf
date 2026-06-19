@@ -2,6 +2,9 @@ package node
 
 import (
 	"reflect"
+	"strings"
+
+	"github.com/warewulf/warewulf/internal/pkg/util"
 )
 
 // UpdateFrom copies fields from src to dst, but only those fields whose
@@ -41,6 +44,60 @@ func (p *Profile) GetProfile() *Profile {
 	return p
 }
 
+// mergeStringSlice returns the result of applying src to dst. If no element
+// of src is prefixed with "+" or "~", src replaces dst (existing behavior).
+// Otherwise merge mode applies: "+foo" (and bare "foo") add foo to dst if
+// absent; "~foo" removes foo from dst. Both operations are idempotent.
+func mergeStringSlice(dst, src []string) []string {
+	merge := false
+	for _, s := range src {
+		if strings.HasPrefix(s, "+") || strings.HasPrefix(s, "~") {
+			merge = true
+			break
+		}
+	}
+	if !merge {
+		return src
+	}
+	result := append([]string(nil), dst...)
+	for _, s := range src {
+		switch {
+		case strings.HasPrefix(s, "~"):
+			target := s[1:]
+			for i := 0; i < len(result); {
+				if result[i] == target {
+					result = append(result[:i], result[i+1:]...)
+				} else {
+					i++
+				}
+			}
+		case strings.HasPrefix(s, "+"):
+			target := s[1:]
+			if !util.InSlice(result, target) {
+				result = append(result, target)
+			}
+		default:
+			if !util.InSlice(result, s) {
+				result = append(result, s)
+			}
+		}
+	}
+	return result
+}
+
+// toStringSlice converts a reflect.Value of a []string-compatible slice
+// into a plain []string for use with mergeStringSlice.
+func toStringSlice(v reflect.Value) []string {
+	if v.IsNil() {
+		return nil
+	}
+	out := make([]string, v.Len())
+	for i := 0; i < v.Len(); i++ {
+		out[i] = v.Index(i).String()
+	}
+	return out
+}
+
 func recursiveUpdateFrom(dst, src reflect.Value, changed func(string) bool) {
 	srcType := src.Type()
 
@@ -56,7 +113,12 @@ func recursiveUpdateFrom(dst, src reflect.Value, changed func(string) bool) {
 		if lopt := field.Tag.Get("lopt"); lopt != "" && field.Tag.Get("comment") != "" {
 			// Leaf field with a cobra flag — copy if the flag was changed
 			if changed(lopt) {
-				dstField.Set(srcField)
+				if srcField.Kind() == reflect.Slice && srcField.Type().Elem().Kind() == reflect.String {
+					merged := mergeStringSlice(toStringSlice(dstField), toStringSlice(srcField))
+					dstField.Set(reflect.ValueOf(merged))
+				} else {
+					dstField.Set(srcField)
+				}
 			}
 		} else if field.Anonymous {
 			// Embedded struct (e.g., Profile in Node)
